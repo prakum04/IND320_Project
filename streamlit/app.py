@@ -2,23 +2,28 @@ import streamlit as st
 
 
 
-#st.sidebar.title("Sidebar")
+
 
 
 pages = {
-    "HomePage": [
+    "Page 1": [
         st.Page("home.py", title="Home"),
         
     ],
-    "Page 1": [
+    "Page 2": [
         st.Page("table.py", title="Table"),
         
     ],
 
-    "Page 2": [
+    "Page 3": [
             st.Page("plot.py", title="Plot"),
             
-        ]
+        ],
+
+    "Page 4": [
+                st.Page("page_4.py", title="Page 4"),
+                
+            ]
    
 }
 
