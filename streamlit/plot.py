@@ -5,10 +5,7 @@ from pathlib import Path
 from sklearn.preprocessing import MinMaxScaler
 
 
-# --------------------------------------------------
-# 1. Read the local CSV file using caching
-# --------------------------------------------------
-
+# Reading the local CSV file using caching
 @st.cache_data
 def load_data():
     file_path = (
@@ -19,7 +16,7 @@ def load_data():
 
     df = pd.read_csv(file_path)
 
-    # Rename columns to English
+    # Renaming columns to English
     df = df.rename(columns={
         "dato_Id": "date_id",
         "omrType": "area_type",
@@ -37,47 +34,38 @@ def load_data():
     return df
 
 
+# Loading the data
 df = load_data()
 
 
-# --------------------------------------------------
-# 2. Page header
-# --------------------------------------------------
-
+# Adding the page header
 st.header("Reservoir Data Plot")
 
 
-# --------------------------------------------------
-# 3. Create month variable
-# --------------------------------------------------
-
-# Convert date column to datetime
+# Converting the date column to datetime
 df["date_id"] = pd.to_datetime(df["date_id"])
 
-# Create a month column for the slider
+
+# Creating a month column for the slider
 df["month"] = df["date_id"].dt.to_period("M").astype(str)
 
-# Get all available months
+
+# Getting all available months
 months = sorted(df["month"].unique())
 
 
-# --------------------------------------------------
-# 4. Select column
-# --------------------------------------------------
-
-# Allow selection of any CSV column or all columns
+# Creating options for selecting a single column or all columns
 column_options = ["All columns"] + df.columns.drop("month").tolist()
 
+
+# Creating the column selectbox
 selected_column = st.selectbox(
     "Select column",
     column_options
 )
 
 
-# --------------------------------------------------
-# 5. Select month range
-# --------------------------------------------------
-
+# Creating the month range slider
 selected_months = st.select_slider(
     "Select month range",
     options=months,
@@ -87,23 +75,20 @@ selected_months = st.select_slider(
 start_month, end_month = selected_months
 
 
-# Keep only rows within the selected months
+# Filtering the data using the selected months
 filtered_df = df[
     (df["month"] >= start_month)
     & (df["month"] <= end_month)
 ].copy()
 
 
-# --------------------------------------------------
-# 6. Create plot
-# --------------------------------------------------
-
+# Creating the plot
 fig, ax = plt.subplots(figsize=(12, 6))
 
 
 if selected_column == "All columns":
 
-    # Measurement columns that are meaningful to compare
+    # Selecting the measurement columns to compare
     measurement_columns = [
         "fill_level",
         "capacity_TWh",
@@ -112,8 +97,7 @@ if selected_column == "All columns":
         "change_in_fill_level"
     ]
 
-    # Scale variables between 0 and 1 because
-    # the original variables have different scales
+    # Scaling the measurement variables between 0 and 1
     scaler = MinMaxScaler()
 
     scaled_df = filtered_df.copy()
@@ -122,19 +106,20 @@ if selected_column == "All columns":
         filtered_df[measurement_columns]
     )
 
-    # Calculate mean across reservoir areas for each date
+    # Grouping the data by date and calculating the mean across areas
     plot_df = (
         scaled_df
         .groupby("date_id")[measurement_columns]
         .mean()
     )
 
-    # Plot all measurement columns together
+    # Plotting all measurement columns together
     plot_df.plot(
         ax=ax,
         style=["-", "-", "-", "--", "-"]
     )
 
+    # Adding the plot title and axis labels
     ax.set_title("Scaled Reservoir Data Over Time")
     ax.set_xlabel("Date")
     ax.set_ylabel("Scaled Value (0–1)")
@@ -143,69 +128,74 @@ if selected_column == "All columns":
 
 else:
 
-    # Numeric columns
+    # Checking if the selected column is numerical
     if pd.api.types.is_numeric_dtype(filtered_df[selected_column]):
 
-        # Calculate mean for each date
+        # Grouping the selected variable by date and calculating the mean
         plot_df = (
             filtered_df
             .groupby("date_id")[selected_column]
             .mean()
         )
 
+        # Plotting the selected numerical variable
         ax.plot(
             plot_df.index,
             plot_df.values
         )
 
+        # Adding the plot title and axis labels
         ax.set_title(f"{selected_column} Over Time")
         ax.set_xlabel("Date")
         ax.set_ylabel(selected_column)
 
 
-    # Date column
+    # Checking if the selected column is the date column
     elif selected_column == "date_id":
 
+        # Counting the number of observations for each date
         counts = filtered_df["date_id"].value_counts().sort_index()
 
+        # Plotting the number of observations over time
         ax.plot(
             counts.index,
             counts.values
         )
 
+        # Adding the plot title and axis labels
         ax.set_title("Observations Over Time")
         ax.set_xlabel("Date")
         ax.set_ylabel("Number of Observations")
 
 
-    # Categorical columns
     else:
 
+        # Counting the values in the selected categorical column
         counts = filtered_df[selected_column].value_counts()
 
+        # Plotting the categorical variable
         counts.plot(
             kind="bar",
             ax=ax
         )
 
+        # Adding the plot title and axis labels
         ax.set_title(f"Distribution of {selected_column}")
         ax.set_xlabel(selected_column)
         ax.set_ylabel("Count")
 
 
-# --------------------------------------------------
-# 7. Plot formatting
-# --------------------------------------------------
-
+# Adding grid lines to the plot
 ax.grid(alpha=0.3)
 
+
+# Rotating the x-axis labels
 plt.xticks(rotation=45)
 
+
+# Adjusting the plot layout
 plt.tight_layout()
 
 
-# --------------------------------------------------
-# 8. Display plot
-# --------------------------------------------------
-
+# Displaying the plot in Streamlit
 st.pyplot(fig)

@@ -2,9 +2,6 @@ import streamlit as st
 
 
 
-
-
-
 pages = {
     "Page 1": [
         st.Page("home.py", title="Home"),
