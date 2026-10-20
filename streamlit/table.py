@@ -1,75 +1,108 @@
+
 import streamlit as st
 import pandas as pd
-from pathlib import Path
+import requests
 
+API_URL = "https://biapi.nve.no/magasinstatistikk/api/Magasinstatistikk/HentOffentligData"
 
-# Reading the reservoir data using caching
-@st.cache_data
+# Download data from NVE
+@st.cache_data(ttl=3600)
 def load_data():
-    file_path = (
-        Path(__file__).resolve().parent.parent
-        / "data"
-        / "reservoirs.csv"
-    )
+    response = requests.get(API_URL, timeout=60)
+    response.raise_for_status()
 
-    return pd.read_csv(file_path)
-
-
-# Loading the data
-df = load_data()
-
-
-# Adding the page title
-st.header("Reservoir Data - First Month")
-
-
-# Converting the date column to datetime
-df["dato_Id"] = pd.to_datetime(df["dato_Id"])
-
-
-# Sorting the data by date
-df = df.sort_values("dato_Id")
-
-
-# Finding the first month in the dataset
-first_month = df["dato_Id"].dt.to_period("M").min()
-
-
-# Filtering the data to keep only the first month
-df_first_month = df[
-    df["dato_Id"].dt.to_period("M") == first_month
-]
-
-
-# Creating one row for every CSV column
-rows = []
-
-for column in df.columns:
-
-    # Checking if the column contains numeric values
-    if pd.api.types.is_numeric_dtype(df_first_month[column]):
-        values = df_first_month[column].tolist()
-    else:
-        values = []
-
-    # Adding the column name and values to the table
-    rows.append({
-        "Variable": column,
-        "Values": values
+    df = pd.DataFrame(response.json()).rename(columns={
+        "dato_Id": "date",
+        "omrType": "area_type",
+        "omrnr": "area_number",
+        "iso_aar": "year",
+        "iso_uke": "week",
+        "fyllingsgrad": "fill_level",
+        "kapasitet_TWh": "capacity_TWh",
+        "fylling_TWh": "stored_energy_TWh",
+        "fyllingsgrad_forrige_uke": "fill_level_previous_week",
+        "endring_fyllingsgrad": "change_in_fill_level",
+        "neste_Publiseringsdato": "next_publication_date"
     })
 
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    return df.dropna(subset=["date"]).sort_values("date")
 
-# Creating the table
-table = pd.DataFrame(rows)
 
+st.title("Reservoir Data — NVE API")
 
-# Displaying the table with line charts for numeric values
+try:
+    df = load_data()
+except requests.RequestException as e:
+    st.error(f"Could not download NVE data: {e}")
+    st.stop()
+
+if df.empty:
+    st.warning("No reservoir data available.")
+    st.stop()
+
+# Select date interval
+min_date = df["date"].min().date()
+max_date = df["date"].max().date()
+default_start = max(min_date, max_date - pd.Timedelta(days=365))
+
+start_date, end_date = st.slider(
+    "Select date interval",
+    min_value=min_date,
+    max_value=max_date,
+    value=(default_start, max_date),
+    format="YYYY-MM-DD"
+)
+
+df = df[df["date"].dt.date.between(start_date, end_date)]
+
+# Select area type and measurement
+area = st.radio("Select area type", ["EL", "NO", "VASS"], horizontal=True)
+df = df[df["area_type"].astype(str).str.upper() == area].copy()
+
+measurements = [
+    "fill_level",
+    "capacity_TWh",
+    "stored_energy_TWh",
+    "fill_level_previous_week",
+    "change_in_fill_level"
+]
+
+measurement = st.selectbox("Select measurement", measurements)
+
+if df.empty:
+    st.warning("No data available for this selection.")
+    st.stop()
+
+# Build a line chart for each area number
+rows = []
+
+for number, group in df.groupby("area_number"):
+    group = group.sort_values("date")
+    values = pd.to_numeric(group[measurement], errors="coerce")
+
+    if measurement in [
+        "fill_level",
+        "fill_level_previous_week",
+        "change_in_fill_level"
+    ]:
+        values = values * 100
+
+    rows.append({
+        "Area number": number,
+        "Development": values.tolist()
+    })
+
 st.dataframe(
-    table,
+    pd.DataFrame(rows),
     column_config={
-        "Values": st.column_config.LineChartColumn(
-            "First month"
+        "Development": st.column_config.LineChartColumn(
+            "Development over selected period"
         )
     },
-    hide_index=True
+    hide_index=True,
+    use_container_width=True
 )
+
+with st.expander("View source data"):
+    st.dataframe(df, hide_index=True, use_container_width=True)

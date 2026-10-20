@@ -1,201 +1,116 @@
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from pathlib import Path
-from sklearn.preprocessing import MinMaxScaler
+import requests
 
+# Download reservoir data from NVE API
+API_URL = "https://biapi.nve.no/magasinstatistikk/api/Magasinstatistikk/HentOffentligData"
 
-# Reading the local CSV file using caching
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_data():
-    file_path = (
-        Path(__file__).resolve().parent.parent
-        / "data"
-        / "reservoirs.csv"
-    )
+    response = requests.get(API_URL, timeout=60)
+    response.raise_for_status()
 
-    df = pd.read_csv(file_path)
-
-    # Renaming columns to English
-    df = df.rename(columns={
-        "dato_Id": "date_id",
+    df = pd.DataFrame(response.json()).rename(columns={
+        "dato_Id": "date",
         "omrType": "area_type",
         "omrnr": "area_number",
-        "iso_aar": "iso_year",
-        "iso_uke": "iso_week",
+        "iso_aar": "year",
+        "iso_uke": "week",
         "fyllingsgrad": "fill_level",
         "kapasitet_TWh": "capacity_TWh",
-        "fylling_TWh": "stored_energy_Twh",
-        "neste_Publiseringsdato": "next_publishing_date",
-        "fyllingsgrad_forrige_uke": "fill_level_last_week",
+        "fylling_TWh": "stored_energy_TWh",
+        "neste_Publiseringsdato": "next_publication_date",
+        "fyllingsgrad_forrige_uke": "fill_level_previous_week",
         "endring_fyllingsgrad": "change_in_fill_level"
     })
 
-    return df
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    return df.dropna(subset=["date"]).sort_values("date")
 
 
-# Loading the data
-df = load_data()
+st.title("Reservoir Statistics — NVE")
 
+try:
+    df = load_data()
+except requests.RequestException as e:
+    st.error(f"Could not download NVE data: {e}")
+    st.stop()
 
-# Adding the page header
-st.header("Reservoir Data Plot")
+if df.empty:
+    st.warning("No reservoir data available.")
+    st.stop()
 
+# Select date interval
+min_date = df["date"].min().date()
+max_date = df["date"].max().date()
 
-# Converting the date column to datetime
-df["date_id"] = pd.to_datetime(df["date_id"])
-
-
-# Creating a month column for the slider
-df["month"] = df["date_id"].dt.to_period("M").astype(str)
-
-
-# Getting all available months
-months = sorted(df["month"].unique())
-
-
-# Creating options for selecting a single column or all columns
-column_options = ["All columns"] + df.columns.drop("month").tolist()
-
-
-# Creating the column selectbox
-selected_column = st.selectbox(
-    "Select column",
-    column_options
+start_date, end_date = st.slider(
+    "Select date interval",
+    min_value=min_date,
+    max_value=max_date,
+    value=(max(min_date, max_date - pd.Timedelta(days=365)), max_date),
+    format="YYYY-MM-DD"
 )
 
+# Filter downloaded data by date and area type
+df = df[df["date"].dt.date.between(start_date, end_date)]
 
-# Creating the month range slider
-selected_months = st.select_slider(
-    "Select month range",
-    options=months,
-    value=(months[0], months[0])
+area = st.radio("Select area type", ["EL", "NO", "VASS"], horizontal=True)
+df = df[df["area_type"].astype(str).str.upper() == area]
+
+if df.empty:
+    st.warning("No data available for this selection.")
+    st.stop()
+
+# Select measurement
+labels = {
+    "fill_level": "Filling level (%)",
+    "capacity_TWh": "Capacity (TWh)",
+    "stored_energy_TWh": "Stored energy (TWh)",
+    "fill_level_previous_week": "Previous week (%)",
+    "change_in_fill_level": "Change (percentage points)"
+}
+
+column = st.selectbox(
+    "Select measurement",
+    list(labels),
+    format_func=lambda x: labels[x]
 )
 
-start_month, end_month = selected_months
+# Plot a separate line for each area number
+fig, ax = plt.subplots(figsize=(11, 5))
 
+for number, group in df.groupby("area_number"):
+    values = pd.to_numeric(group[column], errors="coerce")
 
-# Filtering the data using the selected months
-filtered_df = df[
-    (df["month"] >= start_month)
-    & (df["month"] <= end_month)
-].copy()
+    if column in ["fill_level", "fill_level_previous_week", "change_in_fill_level"]:
+        values = values * 100
 
+    ax.plot(group["date"], values, label=f"Area {number}")
 
-# Creating the plot
-fig, ax = plt.subplots(figsize=(12, 6))
-
-
-if selected_column == "All columns":
-
-    # Selecting the measurement columns to compare
-    measurement_columns = [
-        "fill_level",
-        "capacity_TWh",
-        "stored_energy_Twh",
-        "fill_level_last_week",
-        "change_in_fill_level"
-    ]
-
-    # Scaling the measurement variables between 0 and 1
-    scaler = MinMaxScaler()
-
-    scaled_df = filtered_df.copy()
-
-    scaled_df[measurement_columns] = scaler.fit_transform(
-        filtered_df[measurement_columns]
-    )
-
-    # Grouping the data by date and calculating the mean across areas
-    plot_df = (
-        scaled_df
-        .groupby("date_id")[measurement_columns]
-        .mean()
-    )
-
-    # Plotting all measurement columns together
-    plot_df.plot(
-        ax=ax,
-        style=["-", "-", "-", "--", "-"]
-    )
-
-    # Adding the plot title and axis labels
-    ax.set_title("Scaled Reservoir Data Over Time")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Scaled Value (0–1)")
-    ax.legend(title="Variable")
-
-
-else:
-
-    # Checking if the selected column is numerical
-    if pd.api.types.is_numeric_dtype(filtered_df[selected_column]):
-
-        # Grouping the selected variable by date and calculating the mean
-        plot_df = (
-            filtered_df
-            .groupby("date_id")[selected_column]
-            .mean()
-        )
-
-        # Plotting the selected numerical variable
-        ax.plot(
-            plot_df.index,
-            plot_df.values
-        )
-
-        # Adding the plot title and axis labels
-        ax.set_title(f"{selected_column} Over Time")
-        ax.set_xlabel("Date")
-        ax.set_ylabel(selected_column)
-
-
-    # Checking if the selected column is the date column
-    elif selected_column == "date_id":
-
-        # Counting the number of observations for each date
-        counts = filtered_df["date_id"].value_counts().sort_index()
-
-        # Plotting the number of observations over time
-        ax.plot(
-            counts.index,
-            counts.values
-        )
-
-        # Adding the plot title and axis labels
-        ax.set_title("Observations Over Time")
-        ax.set_xlabel("Date")
-        ax.set_ylabel("Number of Observations")
-
-
-    else:
-
-        # Counting the values in the selected categorical column
-        counts = filtered_df[selected_column].value_counts()
-
-        # Plotting the categorical variable
-        counts.plot(
-            kind="bar",
-            ax=ax
-        )
-
-        # Adding the plot title and axis labels
-        ax.set_title(f"Distribution of {selected_column}")
-        ax.set_xlabel(selected_column)
-        ax.set_ylabel("Count")
-
-
-# Adding grid lines to the plot
+ax.set(
+    title=f"{labels[column]} — {area}",
+    xlabel="Date",
+    ylabel="Percentage points" if column == "change_in_fill_level"
+           else "%" if column in ["fill_level", "fill_level_previous_week"]
+           else "TWh"
+)
+ax.legend(title="Area number")
 ax.grid(alpha=0.3)
-
-
-# Rotating the x-axis labels
-plt.xticks(rotation=45)
-
-
-# Adjusting the plot layout
-plt.tight_layout()
-
-
-# Displaying the plot in Streamlit
+fig.autofmt_xdate()
 st.pyplot(fig)
+plt.close(fig)
+
+# Display data and source information
+with st.expander("View filtered data"):
+    st.dataframe(df, hide_index=True, use_container_width=True)
+
+with st.expander("About the data"):
+    st.write(
+        "Source: NVE Magasinstatistikk API. "
+        "The API endpoint does not accept date parameters, "
+        "so the full dataset is downloaded and cached before "
+        "the selected date interval is applied."
+    )
