@@ -11,10 +11,6 @@ pages = {
     ],
     "ENTSO-E Electricity Data": [
         st.Page("entsoe.py", title="Electricity Transfers"),
-        st.Page("electricity.py", title="Electricity Prices"),
-    ],
-    "Other": [
-        st.Page("page_4.py", title="Page 4"),
     ],
 }
 
