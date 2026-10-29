@@ -2,3 +2,9 @@ streamlit
 pandas
 matplotlib
 scikit-learn
+plotly
+pymongo
+python-dotenv
+requests
+pyspark==3.5.1
+cassandra-driver

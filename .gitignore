@@ -216,3 +216,24 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+secrets.toml
+**/secrets.toml
+
+# Python environment
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+
+# Spark and temporary files
+.ivy2/
+AppData/
+spark_debug.txt
+notebooks/spark_error.txt
+
+# Local backups
+ind320_packages_backup.txt

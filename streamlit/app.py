@@ -1,28 +1,18 @@
+
 import streamlit as st
 
-
-
 pages = {
-    "Page 1": [
+    "Home": [
         st.Page("home.py", title="Home"),
-        
     ],
-    "Page 2": [
-        st.Page("table.py", title="Table"),
-        
+    "NVE Reservoir Data": [
+        st.Page("table.py", title="Data Table"),
+        st.Page("plot.py", title="Reservoir Plots"),
     ],
-
-    "Page 3": [
-            st.Page("plot.py", title="Plot"),
-            
-        ],
-
-    "Page 4": [
-                st.Page("page_4.py", title="Page 4"),
-                
-            ]
-   
+    "ENTSO-E Electricity Data": [
+        st.Page("entsoe.py", title="Electricity Transfers"),
+    ],
 }
 
-pg = st.navigation(pages, position = "sidebar")
+pg = st.navigation(pages, position="sidebar")
 pg.run()
