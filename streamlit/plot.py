@@ -57,7 +57,8 @@ start_date, end_date = st.slider(
 # Filter downloaded data by date and area type
 df = df[df["date"].dt.date.between(start_date, end_date)]
 
-area = st.radio("Select area type", ["EL", "NO", "VASS"], horizontal=True)
+area = st.session_state["reservoir_area_type"]
+
 df = df[df["area_type"].astype(str).str.upper() == area]
 
 if df.empty:

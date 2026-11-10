@@ -57,7 +57,8 @@ start_date, end_date = st.slider(
 df = df[df["date"].dt.date.between(start_date, end_date)]
 
 # Select area type and measurement
-area = st.radio("Select area type", ["EL", "NO", "VASS"], horizontal=True)
+area = st.session_state["reservoir_area_type"]
+
 df = df[df["area_type"].astype(str).str.upper() == area].copy()
 
 measurements = [
