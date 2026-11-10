@@ -237,3 +237,5 @@ notebooks/spark_error.txt
 
 # Local backups
 ind320_packages_backup.txt
+/notebooks/weather_downloads/
+/weather_downloads/
